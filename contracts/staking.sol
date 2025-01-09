@@ -8,7 +8,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./StakingStorage.sol";
 import "./libraries/StakingLib.sol";
 import "./interfaces/IStake.sol";
+import "hardhat/console.sol";
 
+/**
+ * @title Layer2Staking
+ * @dev Main staking contract for Layer2 network
+ */
 contract Layer2Staking is 
     IStaking, 
     StakingStorage, 
@@ -20,6 +25,7 @@ contract Layer2Staking is
     event Received(address indexed sender, uint256 amount);
     event WhitelistStatusChanged(address indexed user, bool status);
     event WhitelistBonusRateUpdated(uint256 oldRate, uint256 newRate);
+    event StakeEndTimeUpdated(uint256 oldEndTime, uint256 newEndTime);
 
     error OnlyAdmin();
     error InvalidAmount();
@@ -49,6 +55,8 @@ contract Layer2Staking is
         _;
     }
 
+    uint256 public historicalTotalStaked;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -60,14 +68,25 @@ contract Layer2Staking is
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
         __StakingStorage_init(msg.sender);
+        
+        // Set initial values
+        stakeEndTime = type(uint256).max; // Default: no end time
+        onlyWhitelistCanStake = true; // Default: whitelist only
+        historicalTotalStaked = 0; // Initialize historical total staked
     }
 
     function stake(
         uint256 lockPeriod
     ) external payable nonReentrant whenNotPaused notBlacklisted returns (uint256) {
+        console.log("Current time:", block.timestamp);
+        console.log("Stake end time:", stakeEndTime);
+
+        require(block.timestamp < stakeEndTime, "Staking period has ended");
+
         uint256 amount = msg.value;
         amount = StakingLib.validateAndFormatAmount(amount, minStakeAmount);
-        if (totalStaked + amount > maxTotalStake) revert MaxTotalStakeExceeded();
+        
+        if (historicalTotalStaked + amount > maxTotalStake) revert MaxTotalStakeExceeded();
 
         uint256 positionId = nextPositionId++;
         Position memory newPosition = Position({
@@ -84,6 +103,8 @@ contract Layer2Staking is
         positionOwner[positionId] = msg.sender;
         userTotalStaked[msg.sender] += amount;
         totalStaked += amount;
+
+        historicalTotalStaked += amount;
 
         emit PositionCreated(
             msg.sender,
@@ -117,24 +138,24 @@ contract Layer2Staking is
         
         position = positions[posIndex];
         if (position.isUnstaked) revert PositionNotFound();
-        if (block.timestamp < position.stakedAt + position.lockPeriod) revert StillLocked();
+        require(
+            block.timestamp + TIME_TOLERANCE >= position.stakedAt + position.lockPeriod,
+            "Still locked"
+        );
 
         uint256 reward = _updateReward(msg.sender, posIndex);
-
         uint256 amount = position.amount;
+        uint256 totalPayout = amount + reward;
+
         position.isUnstaked = true;
         userTotalStaked[msg.sender] -= amount;
         totalStaked -= amount;
 
-        if (reward > 0) {
-            (bool success, ) = msg.sender.call{value: reward}("");
-            require(success, "Reward transfer failed");
-            emit RewardClaimed(msg.sender, positionId, reward, block.timestamp);
-        }
-
-        (bool success2, ) = msg.sender.call{value: amount}("");
-        require(success2, "Unstake transfer failed");
+        emit RewardClaimed(msg.sender, positionId, reward, block.timestamp);
         emit PositionUnstaked(msg.sender, positionId, amount, block.timestamp);
+
+        (bool success, ) = msg.sender.call{value: totalPayout}("");
+        require(success, "Transfer failed");
     }
 
     function claimReward(
@@ -177,9 +198,7 @@ contract Layer2Staking is
                 return StakingLib.calculateReward(
                     position.amount,
                     timeElapsed,
-                    rewardRate,
-                    whitelisted[msg.sender],
-                    whitelistBonusRate
+                    rewardRate
                 );
             }
         }
@@ -323,9 +342,7 @@ contract Layer2Staking is
         reward = StakingLib.calculateReward(
             position.amount, 
             timeElapsed, 
-            rewardRate,
-            whitelisted[_staker],
-            whitelistBonusRate
+            rewardRate
         );
         
         position.lastRewardAt = block.timestamp;
@@ -333,11 +350,32 @@ contract Layer2Staking is
 
 
     function _authorizeUpgrade(address newImplementation) internal override onlyAdmin {
-        // 可以添加额外的升级限制
+        // 检查冷却期
+        require(
+            block.timestamp >= lastUpgradeTime + UPGRADE_COOLDOWN,
+            "Upgrade cooldown not expired"
+        );
+
+        // 检查新实现是否有效
+        require(newImplementation != address(0), "Invalid implementation");
+        
+        // 验证新版本
+        string memory newVersion = IStaking(newImplementation).version();
+        require(
+            keccak256(abi.encodePacked(newVersion)) != 
+            keccak256(abi.encodePacked(VERSION)),
+            "Same version"
+        );
+
+        // 更新最后升级时间
+        lastUpgradeTime = block.timestamp;
+
+        // 发出升级事件
+        emit ContractUpgraded(newVersion, newImplementation, block.timestamp);
     }
 
-    function version() public pure returns (string memory) {
-        return "1.0.0";
+    function version() public pure override returns (string memory) {
+        return VERSION;
     }
 
     receive() external payable {
@@ -387,4 +425,50 @@ contract Layer2Staking is
         progressPercentage = (current * 10000) / total; 
         return (total, current, remaining, progressPercentage);
     }
+
+    function setStakeEndTime(uint256 newEndTime) external onlyAdmin {
+        require(newEndTime > block.timestamp, "End time must be in future");
+        uint256 oldEndTime = stakeEndTime;
+        stakeEndTime = newEndTime;
+        emit StakeEndTimeUpdated(oldEndTime, newEndTime);
+    }
+
+    function getHistoricalTotalStaked() external view returns (uint256) {
+        return historicalTotalStaked;
+    }
+    
+    function addToWhitelistBatch(address[] calldata users) external onlyAdmin {
+        uint256 length = users.length;
+        require(length <= 100, "Batch too large");
+        for (uint256 i = 0; i < length;) {
+            whitelisted[users[i]] = true;
+            emit WhitelistStatusChanged(users[i], true);
+            unchecked { ++i; }
+        }
+    }
+
+    function removeFromWhitelistBatch(address[] calldata users) external onlyAdmin {
+        require(users.length <= 100, "Batch too large"); // 防止 gas 限制
+        for (uint256 i = 0; i < users.length; i++) {
+            whitelisted[users[i]] = false;
+            emit WhitelistStatusChanged(users[i], false);
+        }
+    }
+
+    function checkWhitelistBatch(address[] calldata users) 
+        external 
+        view 
+        returns (bool[] memory results) 
+    {
+        results = new bool[](users.length);
+        for (uint256 i = 0; i < users.length; i++) {
+            results[i] = whitelisted[users[i]];
+        }
+        return results;
+    }
+
+    uint256 private constant TIME_TOLERANCE = 900; // 15分钟
+    uint256 private constant UPGRADE_COOLDOWN = 7 days;
+    uint256 public lastUpgradeTime;
+    string public constant VERSION = "1.0.0";
 }

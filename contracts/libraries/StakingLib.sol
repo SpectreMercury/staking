@@ -12,7 +12,6 @@ library StakingLib {
     error CalculationOverflow();
     error ZeroAddress();
 
-    // 常量
     uint256 private constant SECONDS_PER_YEAR = 365 days;
     uint256 private constant BASIS_POINTS = 10000;
     
@@ -20,26 +19,33 @@ library StakingLib {
     function calculateReward(
         uint256 amount,
         uint256 timeElapsed,
-        uint256 rewardRate,
-        bool isWhitelisted,
-        uint256 lockPeriod
+        uint256 rewardRate
     ) public pure returns (uint256 reward) {
         if (amount == 0 || timeElapsed == 0 || rewardRate == 0) {
             return 0;
         }
         
-        uint256 effectiveRate = rewardRate;
-        if (isWhitelisted && (lockPeriod >= 180 days)) {
-            effectiveRate = (rewardRate * 105) / 100;
-        }
+        uint256 PRECISION = 1e18;
         
-        unchecked {
-            uint256 numerator = amount * timeElapsed * effectiveRate;
-            uint256 denominator = SECONDS_PER_YEAR * BASIS_POINTS;
-            
-            if (denominator == 0) revert CalculationOverflow();
-            reward = numerator / denominator;
-        }
+        // 检查输入值的上限
+        require(amount <= type(uint256).max / PRECISION, "Amount too large");
+        require(timeElapsed <= SECONDS_PER_YEAR, "Time elapsed too large");
+        require(rewardRate <= BASIS_POINTS, "Rate too large");
+
+        // 分步计算，每步都检查溢出
+        uint256 annualRate = (rewardRate * PRECISION) / BASIS_POINTS;
+        require(annualRate <= type(uint256).max / PRECISION, "Annual rate overflow");
+        
+        uint256 timeRatio = (timeElapsed * PRECISION) / SECONDS_PER_YEAR;
+        require(timeRatio <= PRECISION, "Time ratio overflow");
+        
+        uint256 rewardRatio = (annualRate * timeRatio) / PRECISION;
+        require(rewardRatio <= type(uint256).max / PRECISION, "Reward ratio overflow");
+        
+        reward = (amount * rewardRatio) / PRECISION;
+        require(reward <= amount * rewardRate / BASIS_POINTS, "Reward overflow");
+        
+        return reward;
     }
 
 
@@ -47,12 +53,10 @@ library StakingLib {
         uint256 period,
         uint256 rewardRate
     ) public pure returns (bool) {
-        // 锁定期必须至少1天，最多2年
         if (period < 1 days || period > 730 days) {
             return false;
         }
         
-        // 年化收益率不能超过 100%
         if (rewardRate > BASIS_POINTS) {
             return false;
         }
@@ -76,7 +80,6 @@ library StakingLib {
         uint256 stakedAt,
         uint256 lockPeriod
     ) public pure returns (uint256) {
-        // Solidity 0.8+ 会自动检查溢出
         return stakedAt + lockPeriod;
     }
 
@@ -96,7 +99,7 @@ library StakingLib {
         if (isAdd) {
             return currentTotal + amount;
         } else {
-            return currentTotal - amount; // Solidity 0.8+ 会自动检查下溢
+            return currentTotal - amount; 
         }
     }
 
@@ -146,9 +149,7 @@ library StakingLib {
                 rewards[i] = calculateReward(
                     positions[i].amount, 
                     timeElapsed, 
-                    rate,
-                    false,
-                    0
+                    rate
                 );
             }
         }

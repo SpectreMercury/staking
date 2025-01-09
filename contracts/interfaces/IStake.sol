@@ -3,63 +3,63 @@ pragma solidity ^0.8.27;
 
 interface IStaking {
     /**
-     * @dev 质押位置的结构体
+     * @dev Position structure for staking
      */
     struct Position {
-        uint256 positionId;      // 位置ID
-        uint256 amount;          // 质押数量
-        uint256 lockPeriod;      // 锁定期（以秒为单位）
-        uint256 stakedAt;        // 质押时间
-        uint256 lastRewardAt;    // 上次领取奖励时间
-        bool isUnstaked;         // 是否已解锁
+        uint256 positionId;      // Position ID
+        uint256 amount;          // Staked amount
+        uint256 lockPeriod;      // Lock period in seconds
+        uint256 stakedAt;        // Timestamp when staked
+        uint256 lastRewardAt;    // Last reward claim timestamp
+        bool isUnstaked;         // Whether position is unstaked
     }
 
     /**
-     * @dev 锁定期选项结构体
+     * @dev Lock option structure
      */
     struct LockOption {
-        uint256 period;          // 锁定时间
-        uint256 rewardRate;      // 对应的年化收益率（基点）
+        uint256 period;          // Lock period
+        uint256 rewardRate;      // Annual reward rate in basis points
     }
 
     /**
-     * @dev 质押 native token 创建新的质押位置
-     * @param lockPeriod 锁定期（秒）
-     * @return positionId 新创建的质押位置ID
+     * @dev Stake native token to create a new staking position
+     * @param lockPeriod Lock period in seconds
+     * @return positionId ID of the newly created staking position
      */
     function stake(uint256 lockPeriod) external payable returns (uint256 positionId);
 
     /**
-     * @dev 解锁指定的质押位置
-     * @param positionId 质押位置ID
+     * @dev Unstake from a specific position
+     * @param positionId Position ID to unstake from
      */
     function unstake(uint256 positionId) external;
 
     /**
-     * @dev 领取指定位置的质押奖励
-     * @param positionId 质押位置ID
-     * @return reward 领取的奖励数量
+     * @dev Claim rewards from a specific position
+     * @param positionId Position ID to claim rewards from
+     * @return reward Amount of rewards claimed
      */
     function claimReward(uint256 positionId) external returns (uint256 reward);
 
     /**
-     * @dev 查询指定位置的待领取奖励
-     * @param positionId 质押位置ID
-     * @return reward 待领取的奖励数量
+     * @dev Get pending rewards for a specific position
+     * @param positionId Position ID to check rewards for
+     * @return reward Amount of pending rewards
      */
     function pendingReward(uint256 positionId) external view returns (uint256 reward);
 
     /**
-     * @dev 获取用户所有的质押位置
-     * @param user 用户地址
-     * @return 质押位置数组
+     * @dev Get all staking positions for a user
+     * @param user User address to check positions for
+     * @return Array of staking positions
      */
     function getUserPositions(address user) external view returns (Position[] memory);
 
     /**
-     * @dev 获取用户的质押位置数量
-     * @param user 用户地址
-     * @return count 质押位置数量
+     * @dev Get the number of staking positions for a user
+     * @param user User address to check
+     * @return count Number of staking positions
      */
     function getUserPositionCount(address user) external view returns (uint256 count);
 
@@ -68,6 +68,8 @@ interface IStaking {
     function getRewardRate(uint256 lockPeriod) external view returns (uint256 rate);
 
     function getTotalStaked() external view returns (uint256 amount);
+
+    function version() external pure returns (string memory);
 
     event PositionCreated(
         address indexed user,
@@ -97,7 +99,6 @@ interface IStaking {
         uint256 timestamp
     );
 
-
     event StakingPaused(address indexed operator, uint256 timestamp);
 
     event StakingUnpaused(address indexed operator, uint256 timestamp);
@@ -110,4 +111,10 @@ interface IStaking {
     );
 
     event MaxTotalStakeUpdated(uint256 oldLimit, uint256 newLimit);
+
+    event ContractUpgraded(
+        string indexed version,
+        address indexed implementation,
+        uint256 timestamp
+    );
 }

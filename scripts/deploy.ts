@@ -43,12 +43,36 @@ async function main() {
     );
     console.log("Implementation deployed to:", implementationAddress);
 
-    // 3. 向合约转账初始 HSK 作为奖励池
+    // 3. 设置白名单和质押截止时间
+    console.log("Configuring staking parameters...");
+    
+    // 添加初始白名单地址
+    const whitelistAddresses = [
+      "0x66F75DCA1d49bD95b8579d1B16727A81839c987C",
+      "0x9e0af8db875d20d3bf345a6e6ac7f328bd02dd99",
+      "0x7623f0ea9209c2336619b69b19b55e355d0c81c2",
+    ];
+    
+    for (const address of whitelistAddresses) {
+      console.log(`Adding ${address} to whitelist...`);
+      const tx = await staking.addToWhitelist(address);
+      await tx.wait();
+    }
+    
+    // 设置质押截止时间为今天下午2点（北京时间）
+    const today = new Date();
+    today.setHours(22, 0, 0, 0); // 设置为下午2点
+    const endTime = Math.floor(today.getTime() / 1000); // 转换为 Unix 时间戳
+    console.log(`Setting stake end time to: ${new Date(endTime * 1000).toLocaleString()}`);
+    const setEndTimeTx = await staking.setStakeEndTime(endTime);
+    await setEndTimeTx.wait();
+
+    // 4. 向合约转账初始 HSK 作为奖励池
     console.log("Transferring initial HSK to the contract...");
     const [deployer] = await ethers.getSigners();
     const tx = await deployer.sendTransaction({
       to: proxyAddress,
-      value: ethers.parseEther("1000"), // 转账1000 HSK作为初始奖励池
+      value: ethers.parseEther("10"), // 转账10 HSK作为初始奖励池
     });
     await tx.wait();
     console.log("1000 HSK transferred to the contract as reward pool.");
@@ -86,6 +110,8 @@ async function main() {
     console.log("StakingLib:", stakingLibAddress);
     console.log("Proxy:", proxyAddress);
     console.log("Implementation:", implementationAddress);
+    console.log("Staking End Time:", new Date(endTime * 1000).toLocaleString());
+    console.log("Initial Whitelist:", whitelistAddresses);
     console.log("-------------------");
 
   } catch (error) {
