@@ -13,6 +13,12 @@ import "hardhat/console.sol";
 /**
  * @title Layer2Staking
  * @dev Main staking contract for Layer2 network
+ * Implements staking functionality with multiple lock periods and reward rates
+ * Features include:
+ * - Upgradeable proxy pattern
+ * - Whitelist system
+ * - Emergency withdrawal
+ * - Reward calculation and distribution
  */
 contract Layer2Staking is 
     IStaking, 
@@ -22,11 +28,13 @@ contract Layer2Staking is
     OwnableUpgradeable,
     UUPSUpgradeable 
 {
+    // Events for tracking contract state changes
     event Received(address indexed sender, uint256 amount);
     event WhitelistStatusChanged(address indexed user, bool status);
     event WhitelistBonusRateUpdated(uint256 oldRate, uint256 newRate);
     event StakeEndTimeUpdated(uint256 oldEndTime, uint256 newEndTime);
 
+    // Custom errors for better gas efficiency and clearer error messages
     error OnlyAdmin();
     error InvalidAmount();
     error InvalidPeriod();
@@ -40,6 +48,7 @@ contract Layer2Staking is
     error MaxTotalStakeExceeded();
     error InvalidMaxStakeLimit();
 
+    // Access control modifiers
     modifier onlyAdmin() {
         if (msg.sender != admin) revert OnlyAdmin();
         _;
@@ -55,6 +64,7 @@ contract Layer2Staking is
         _;
     }
 
+    // Historical total staked amount tracking
     uint256 public historicalTotalStaked;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -62,6 +72,10 @@ contract Layer2Staking is
         _disableInitializers();
     }
 
+    /**
+     * @dev Initializes the contract with default settings
+     * Sets up initial staking parameters and enables whitelist-only mode
+     */
     function initialize() external initializer {
         __ReentrancyGuard_init();
         __Pausable_init();
@@ -70,11 +84,16 @@ contract Layer2Staking is
         __StakingStorage_init(msg.sender);
         
         // Set initial values
-        stakeEndTime = type(uint256).max; // Default: no end time
-        onlyWhitelistCanStake = true; // Default: whitelist only
-        historicalTotalStaked = 0; // Initialize historical total staked
+        stakeEndTime = type(uint256).max;    // No initial end time
+        onlyWhitelistCanStake = true;        // Start in whitelist-only mode
+        historicalTotalStaked = 0;           // Initialize historical total
     }
 
+    /**
+     * @dev Creates a new staking position
+     * @param lockPeriod Duration for which tokens will be locked
+     * @return uint256 ID of the newly created position
+     */
     function stake(
         uint256 lockPeriod
     ) external payable nonReentrant whenNotPaused notBlacklisted returns (uint256) {
@@ -350,16 +369,13 @@ contract Layer2Staking is
 
 
     function _authorizeUpgrade(address newImplementation) internal override onlyAdmin {
-        // 检查冷却期
         require(
             block.timestamp >= lastUpgradeTime + UPGRADE_COOLDOWN,
             "Upgrade cooldown not expired"
         );
 
-        // 检查新实现是否有效
         require(newImplementation != address(0), "Invalid implementation");
         
-        // 验证新版本
         string memory newVersion = IStaking(newImplementation).version();
         require(
             keccak256(abi.encodePacked(newVersion)) != 
