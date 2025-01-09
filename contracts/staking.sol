@@ -483,7 +483,7 @@ contract Layer2Staking is
         return results;
     }
 
-    uint256 private constant TIME_TOLERANCE = 900; // 15分钟
+    uint256 private constant TIME_TOLERANCE = 900; 
     uint256 private constant UPGRADE_COOLDOWN = 7 days;
     uint256 public lastUpgradeTime;
     string public constant VERSION = "1.0.0";
