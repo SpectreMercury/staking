@@ -15,8 +15,6 @@ abstract contract StakingStorage is Initializable {
     uint256[48] private __gap;
 
     // Constants for calculations and configurations
-    uint256 internal constant BASIS_POINTS = 10000;    // Base for percentage calculations (100% = 10000)
-    uint256 internal constant SECONDS_PER_YEAR = 365 days;    // Number of seconds in a year
     uint256 internal constant HSK_DECIMALS = 18;    // Decimal places for HSK token
     
     // Staking parameters
@@ -33,10 +31,8 @@ abstract contract StakingStorage is Initializable {
     bool public emergencyMode;    // Emergency stop mechanism
     mapping(uint256 => address) public positionOwner;    // Maps position IDs to owners
     address public admin;         // Admin address
-    address public pendingAdmin;  // Pending admin for two-step transfer
     
     // Reward and stake tracking
-    uint256 public rewardReserve;    // Reserved for future reward distribution
     mapping(address => uint256) public userTotalStaked;    // Total staked per user
     
     // Access control
@@ -49,8 +45,17 @@ abstract contract StakingStorage is Initializable {
     uint256 public stakeEndTime;      // Deadline for new stakes
     bool public onlyWhitelistCanStake;    // Whitelist-only mode flag
 
-    // Reentrancy guard
-    bool internal _notEntered;
+    // Add event for admin changes
+    event AdminTransferInitiated(address indexed currentAdmin, address indexed pendingAdmin);
+    event AdminTransferCompleted(address indexed oldAdmin, address indexed newAdmin);
+
+    // Add reward pool tracking
+    uint256 public totalPendingRewards;     // Total rewards that need to be paid
+    uint256 public rewardPoolBalance;       // Current balance of reward pool
+    
+    // Add event for reward pool updates
+    event RewardPoolUpdated(uint256 newBalance);
+    event InsufficientRewardPool(uint256 required, uint256 available);
 
     /**
      * @dev Initializes the storage contract with basic settings
@@ -63,7 +68,6 @@ abstract contract StakingStorage is Initializable {
         
         // Initialize basic parameters
         admin = _admin;
-        _notEntered = true;
         minStakeAmount = 100 * 10**HSK_DECIMALS;
         nextPositionId = 1;
 

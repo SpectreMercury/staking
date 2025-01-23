@@ -27,16 +27,28 @@ library StakingLib {
      * @param amount The staked amount
      * @param timeElapsed Time since last reward claim
      * @param rewardRate Annual reward rate in basis points (100% = 10000)
+     * @param lockPeriod Duration of the lock in seconds
+     * @param stakedAt Timestamp when the position was staked
      * @return reward The calculated reward amount
      */
     function calculateReward(
         uint256 amount,
         uint256 timeElapsed,
-        uint256 rewardRate
+        uint256 rewardRate,
+        uint256 lockPeriod,
+        uint256 stakedAt
     ) public pure returns (uint256 reward) {
         // Early return for zero values
         if (amount == 0 || timeElapsed == 0 || rewardRate == 0) {
             return 0;
+        }
+        
+        // Calculate the end of lock period
+        uint256 lockEndTime = stakedAt + lockPeriod;
+        
+        // If current time is beyond lock period, only calculate rewards up to lock end
+        if (block.timestamp > lockEndTime) {
+            timeElapsed = lockEndTime - stakedAt;
         }
         
         // High precision calculations using 18 decimals
@@ -44,26 +56,32 @@ library StakingLib {
         
         // Input validation to prevent overflow
         require(amount <= type(uint256).max / PRECISION, "Amount too large");
-        require(timeElapsed <= SECONDS_PER_YEAR, "Time elapsed too large");
         require(rewardRate <= BASIS_POINTS, "Rate too large");
 
         // Step 1: Calculate annual rate with high precision
         uint256 annualRate = (rewardRate * PRECISION) / BASIS_POINTS;
         require(annualRate <= type(uint256).max / PRECISION, "Annual rate overflow");
         
-        // Step 2: Calculate time ratio with high precision
-        uint256 timeRatio = (timeElapsed * PRECISION) / SECONDS_PER_YEAR;
-        require(timeRatio <= PRECISION, "Time ratio overflow");
+        // Step 2: Calculate complete years and remaining time
+        uint256 completeYears = timeElapsed / SECONDS_PER_YEAR;
+        uint256 remainingTime = timeElapsed % SECONDS_PER_YEAR;
         
-        // Step 3: Calculate reward ratio
-        uint256 rewardRatio = (annualRate * timeRatio) / PRECISION;
-        require(rewardRatio <= type(uint256).max / PRECISION, "Reward ratio overflow");
+        // Step 3: Calculate rewards for complete years
+        uint256 yearlyReward = (amount * annualRate) / PRECISION;
+        uint256 totalReward = yearlyReward * completeYears;
         
-        // Step 4: Calculate final reward amount
-        reward = (amount * rewardRatio) / PRECISION;
-        require(reward <= amount * rewardRate / BASIS_POINTS, "Reward overflow");
+        // Step 4: Calculate rewards for remaining time
+        if (remainingTime > 0) {
+            uint256 timeRatio = (remainingTime * PRECISION) / SECONDS_PER_YEAR;
+            uint256 remainingReward = (amount * annualRate * timeRatio) / (PRECISION * PRECISION);
+            totalReward += remainingReward;
+        }
         
-        return reward;
+        // Validation check
+        require(totalReward <= amount * rewardRate * (timeElapsed / SECONDS_PER_YEAR + 1) / BASIS_POINTS, 
+            "Reward overflow");
+        
+        return totalReward;
     }
 
     /**
@@ -177,18 +195,28 @@ library StakingLib {
      * @dev Gets the reward rate for a specific lock period
      * @param lockPeriod Lock period to check
      * @param options Array of available lock options
+     * @param historicalRates Mapping of historical lock periods to their rates
      * @return rate Reward rate for the specified period
      * @custom:throws InvalidPeriod if period is not found in options
      */
     function validateAndGetRate(
         uint256 lockPeriod,
-        IStaking.LockOption[] memory options
-    ) public pure returns (uint256 rate) {
+        IStaking.LockOption[] memory options,
+        mapping(uint256 => uint256) storage historicalRates
+    ) public view returns (uint256 rate) {
+        // First check current options
         for (uint256 i = 0; i < options.length; i++) {
             if (options[i].period == lockPeriod) {
                 return options[i].rewardRate;
             }
         }
+        
+        // If not found in current options, check historical rates
+        rate = historicalRates[lockPeriod];
+        if (rate > 0) {
+            return rate;
+        }
+        
         revert InvalidPeriod();
     }
 
@@ -209,11 +237,13 @@ library StakingLib {
         for (uint256 i = 0; i < positions.length; i++) {
             if (!positions[i].isUnstaked) {
                 uint256 timeElapsed = currentTime - positions[i].lastRewardAt;
-                uint256 rate = validateAndGetRate(positions[i].lockPeriod, options);
+                uint256 rate = validateAndGetRate(positions[i].lockPeriod, options, historicalRates);
                 rewards[i] = calculateReward(
                     positions[i].amount, 
                     timeElapsed, 
-                    rate
+                    rate,
+                    positions[i].lockPeriod,
+                    positions[i].stakedAt
                 );
             }
         }
