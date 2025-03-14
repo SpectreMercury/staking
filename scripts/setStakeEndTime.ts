@@ -4,7 +4,7 @@ async function main() {
   const [deployer] = await ethers.getSigners();
 
   // 使用您部署的 Layer2Staking 合约的地址
-  const proxyAddress = "0x03973a7814c0Fd55fadAEbE335beB573A274Dd7a";
+  const proxyAddress = "0x5F1Fb4212727f436E83A2923b43a6d00b62455F8";
 
   console.log("Connecting to Layer2Staking contract at:", proxyAddress);
 
@@ -12,7 +12,7 @@ async function main() {
   const Layer2Staking = await ethers.getContractAt("Layer2Staking", proxyAddress);
   const staking = Layer2Staking.attach(proxyAddress);
 
-  // 设置新的质押截止时间为今天下午2点（北京时间）
+  // 设置新的质押截止时间为今天下午10点（北京时间）
   const today = new Date();
   today.setHours(22, 0, 0, 0);
   const newEndTime = Math.floor(today.getTime() / 1000); // 转换为 Unix 时间戳

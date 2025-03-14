@@ -31,9 +31,12 @@ abstract contract StakingStorage is Initializable {
     bool public emergencyMode;    // Emergency stop mechanism
     mapping(uint256 => address) public positionOwner;    // Maps position IDs to owners
     address public admin;         // Admin address
+    address public pendingAdmin;  // Pending admin for two-step transfer
     
     // Reward and stake tracking
     mapping(address => uint256) public userTotalStaked;    // Total staked per user
+    uint256 public totalPendingRewards;     // Total rewards that need to be paid
+    uint256 public rewardPoolBalance;       // Current balance of reward pool
     
     // Access control
     mapping(address => bool) public blacklisted;     // Blacklisted addresses
@@ -49,10 +52,6 @@ abstract contract StakingStorage is Initializable {
     event AdminTransferInitiated(address indexed currentAdmin, address indexed pendingAdmin);
     event AdminTransferCompleted(address indexed oldAdmin, address indexed newAdmin);
 
-    // Add reward pool tracking
-    uint256 public totalPendingRewards;     // Total rewards that need to be paid
-    uint256 public rewardPoolBalance;       // Current balance of reward pool
-    
     // Add event for reward pool updates
     event RewardPoolUpdated(uint256 newBalance);
     event InsufficientRewardPool(uint256 required, uint256 available);
@@ -71,14 +70,13 @@ abstract contract StakingStorage is Initializable {
         minStakeAmount = 100 * 10**HSK_DECIMALS;
         nextPositionId = 1;
 
-        // Set up initial staking options
         lockOptions.push(IStaking.LockOption({
-            period: 180 days,    // 6-month lock period
+            period: 120 days,    // 6-month lock period
             rewardRate: 700      // 7% annual reward rate
         }));
         
         lockOptions.push(IStaking.LockOption({
-            period: 365 days,    // 1-year lock period
+            period: 305 days,    // 1-year lock period
             rewardRate: 1500     // 15% annual reward rate
         }));
         

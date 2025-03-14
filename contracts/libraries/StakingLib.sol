@@ -22,33 +22,46 @@ library StakingLib {
     uint256 private constant SECONDS_PER_YEAR = 365 days;
     uint256 private constant BASIS_POINTS = 10000; // 100% = 10000
     
+    function calculateYearlyReward(
+        uint256 amount,
+        uint256 annualRate,
+        uint256 PRECISION
+    ) private pure returns (uint256) {
+        return (amount * annualRate) / PRECISION;
+    }
+
+    function calculateRemainingTimeReward(
+        uint256 amount,
+        uint256 annualRate,
+        uint256 remainingTime,
+        uint256 PRECISION
+    ) private pure returns (uint256) {
+        uint256 timeRatio = (remainingTime * PRECISION) / SECONDS_PER_YEAR;
+        return (amount * annualRate * timeRatio) / (PRECISION * PRECISION);
+    }
+
     /**
      * @dev Calculates the reward for a staking position
      * @param amount The staked amount
      * @param timeElapsed Time since last reward claim
      * @param rewardRate Annual reward rate in basis points (100% = 10000)
      * @param lockPeriod Duration of the lock in seconds
-     * @param stakedAt Timestamp when the position was staked
      * @return reward The calculated reward amount
      */
     function calculateReward(
         uint256 amount,
         uint256 timeElapsed,
         uint256 rewardRate,
-        uint256 lockPeriod,
-        uint256 stakedAt
+        uint256 lockPeriod
     ) public pure returns (uint256 reward) {
         // Early return for zero values
         if (amount == 0 || timeElapsed == 0 || rewardRate == 0) {
             return 0;
         }
         
-        // Calculate the end of lock period
-        uint256 lockEndTime = stakedAt + lockPeriod;
-        
         // If current time is beyond lock period, only calculate rewards up to lock end
-        if (block.timestamp > lockEndTime) {
-            timeElapsed = lockEndTime - stakedAt;
+        if (timeElapsed > lockPeriod) {
+            timeElapsed = lockPeriod;
         }
         
         // High precision calculations using 18 decimals
@@ -58,23 +71,25 @@ library StakingLib {
         require(amount <= type(uint256).max / PRECISION, "Amount too large");
         require(rewardRate <= BASIS_POINTS, "Rate too large");
 
-        // Step 1: Calculate annual rate with high precision
+        // Calculate annual rate with high precision
         uint256 annualRate = (rewardRate * PRECISION) / BASIS_POINTS;
         require(annualRate <= type(uint256).max / PRECISION, "Annual rate overflow");
         
-        // Step 2: Calculate complete years and remaining time
+        // Calculate complete years and remaining time
         uint256 completeYears = timeElapsed / SECONDS_PER_YEAR;
         uint256 remainingTime = timeElapsed % SECONDS_PER_YEAR;
         
-        // Step 3: Calculate rewards for complete years
-        uint256 yearlyReward = (amount * annualRate) / PRECISION;
-        uint256 totalReward = yearlyReward * completeYears;
+        // Calculate rewards for complete years
+        uint256 totalReward = calculateYearlyReward(amount, annualRate, PRECISION) * completeYears;
         
-        // Step 4: Calculate rewards for remaining time
+        // Calculate rewards for remaining time
         if (remainingTime > 0) {
-            uint256 timeRatio = (remainingTime * PRECISION) / SECONDS_PER_YEAR;
-            uint256 remainingReward = (amount * annualRate * timeRatio) / (PRECISION * PRECISION);
-            totalReward += remainingReward;
+            totalReward += calculateRemainingTimeReward(
+                amount,
+                annualRate,
+                remainingTime,
+                PRECISION
+            );
         }
         
         // Validation check
@@ -225,25 +240,30 @@ library StakingLib {
      * @param positions Array of staking positions
      * @param currentTime Current timestamp
      * @param options Available lock options
+     * @param historicalRates Mapping of historical lock periods to their rates
      * @return rewards Array of calculated rewards for each position
      */
     function calculateBatchRewards(
         IStaking.Position[] memory positions,
         uint256 currentTime,
-        IStaking.LockOption[] memory options
-    ) public pure returns (uint256[] memory rewards) {
+        IStaking.LockOption[] memory options,
+        mapping(uint256 => uint256) storage historicalRates
+    ) public view returns (uint256[] memory rewards) {
         rewards = new uint256[](positions.length);
         
         for (uint256 i = 0; i < positions.length; i++) {
             if (!positions[i].isUnstaked) {
                 uint256 timeElapsed = currentTime - positions[i].lastRewardAt;
-                uint256 rate = validateAndGetRate(positions[i].lockPeriod, options, historicalRates);
+                uint256 rate = validateAndGetRate(
+                    positions[i].lockPeriod, 
+                    options,
+                    historicalRates
+                );
                 rewards[i] = calculateReward(
                     positions[i].amount, 
                     timeElapsed, 
                     rate,
-                    positions[i].lockPeriod,
-                    positions[i].stakedAt
+                    positions[i].lockPeriod
                 );
             }
         }

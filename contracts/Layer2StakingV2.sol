@@ -10,8 +10,8 @@ import "./libraries/StakingLib.sol";
 import "./interfaces/IStake.sol";
 
 /**
- * @title Layer2Staking
- * @dev Main staking contract for Layer2 network
+ * @title Layer2StakingV2
+ * @dev Main staking contract for Layer2 network - Version 2
  * Implements staking functionality with multiple lock periods and reward rates
  * Features include:
  * - Upgradeable proxy pattern
@@ -19,7 +19,7 @@ import "./interfaces/IStake.sol";
  * - Emergency withdrawal
  * - Reward calculation and distribution
  */
-contract Layer2Staking is 
+contract Layer2StakingV2 is 
     IStaking, 
     StakingStorage, 
     ReentrancyGuardUpgradeable, 
@@ -150,14 +150,14 @@ contract Layer2Staking is
             amount,
             lockPeriod,  // timeElapsed
             rewardRate,
-            lockPeriod    // 移除 block.timestamp
+            lockPeriod
         );
 
         // Check if reward pool can cover this new stake
-        // require(
-        //     rewardPoolBalance >= totalPendingRewards + potentialReward,
-        //     "Insufficient reward pool"
-        // );
+        require(
+            rewardPoolBalance >= totalPendingRewards + potentialReward,
+            "Insufficient reward pool"
+        );
 
         // Update total pending rewards
         totalPendingRewards += potentialReward;
@@ -289,7 +289,7 @@ contract Layer2Staking is
                     position.amount,
                     timeElapsed,
                     position.rewardRate,
-                    position.lockPeriod    // 移除 position.stakedAt
+                    position.lockPeriod
                 );
             }
         }
@@ -507,8 +507,10 @@ contract Layer2Staking is
             "Same version"
         );
 
+        // 更新最后升级时间
         lastUpgradeTime = block.timestamp;
 
+        // 发出升级事件
         emit ContractUpgraded(newVersion, newImplementation, block.timestamp);
     }
 
@@ -622,9 +624,9 @@ contract Layer2Staking is
     }
 
     uint256 private constant TIME_TOLERANCE = 900; 
-    uint256 private constant UPGRADE_COOLDOWN = 7 days;
+    uint256 private constant UPGRADE_COOLDOWN = 1 days;
     uint256 public lastUpgradeTime;
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "1.0.1"; // 更新版本号
 
     // Add a function to check if a lock period is in use
     function isLockPeriodInUse(uint256 period) internal view returns (bool) {
@@ -706,7 +708,7 @@ contract Layer2Staking is
             position.amount,
             timeElapsed,
             position.rewardRate,
-            position.lockPeriod    // 移除 position.stakedAt
+            position.lockPeriod
         );
     }
 
@@ -759,4 +761,4 @@ contract Layer2Staking is
         }
         revert PositionNotFound();
     }
-}
+} 

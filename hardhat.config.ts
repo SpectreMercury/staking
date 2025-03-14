@@ -23,8 +23,15 @@ const config: HardhatUserConfig = {
       accounts: [process.env.PRIVATE_KEY ?? ''],
       chainId: 133,
       gasPrice: "auto",
-    }
+    },
+    hashkeyMainnet: {
+      url: "https://mainnet.hsk.xyz",
+      accounts: [process.env.PRIVATE_KEY!!],
+      chainId: 177,
+      gasPrice: "auto",
+    },
   },
+  
   etherscan: {
     apiKey: {
       hashkeyTestnet: "123",
@@ -36,6 +43,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://hashkeychain-testnet-explorer.alt.technology/api",
           browserURL: "https://hashkeychain-testnet-explorer.alt.technology/"
+        }
+      },
+      {
+        network: "hashkeyMainnet",
+        chainId: 177,
+        urls: {
+          apiURL: "https://explorer.hsk.xyz/api",
+          browserURL: "https://explorer.hsk.xyz"
         }
       }
     ]

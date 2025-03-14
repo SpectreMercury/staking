@@ -11,6 +11,7 @@ interface IStaking {
         uint256 lockPeriod;      // Lock period in seconds
         uint256 stakedAt;        // Timestamp when staked
         uint256 lastRewardAt;    // Last reward claim timestamp
+        uint256 rewardRate;      // Reward rate in basis points
         bool isUnstaked;         // Whether position is unstaked
     }
 
