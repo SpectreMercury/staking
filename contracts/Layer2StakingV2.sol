@@ -349,37 +349,6 @@ contract Layer2StakingV2 is
         emit LockOptionAdded(period, rewardRate, block.timestamp);
     }
 
-
-    function updateLockOption(
-        uint256 index,
-        uint256 newPeriod,
-        uint256 newRate
-    ) external onlyAdmin whenNotEmergency {
-        require(index < lockOptions.length, "Invalid index");
-        require(StakingLib.isValidLockOption(newPeriod, newRate), "Invalid lock option");
-        
-        uint256 oldPeriod = lockOptions[index].period;
-        require(!isLockPeriodInUse(oldPeriod), "Lock period in use");
-
-        // Check if newPeriod already exists (excluding the current index)
-        for (uint256 i = 0; i < lockOptions.length; i++) {
-            if (i != index && lockOptions[i].period == newPeriod) {
-                revert InvalidPeriod();
-            }
-        }
-
-        // Store the old period and rate in historical rates
-        uint256 oldRate = lockOptions[index].rewardRate;
-        historicalRates[oldPeriod] = oldRate;
-
-        // Update to new values
-        lockOptions[index].period = newPeriod;
-        lockOptions[index].rewardRate = newRate;
-        
-        emit LockOptionUpdated(index, newPeriod, newRate);
-    }
-
-
     function setMinStakeAmount(uint256 newAmount) external onlyAdmin whenNotEmergency {
         uint256 oldAmount = minStakeAmount;
         minStakeAmount = newAmount;
@@ -729,8 +698,8 @@ contract Layer2StakingV2 is
     }
 
     function withdrawExcessRewardPool(uint256 amount) external onlyAdmin {
-        uint256 excess = rewardPoolBalance - totalPendingRewards;
-        require(amount <= excess, "Cannot withdraw required rewards");
+        uint256 excess = rewardPoolBalance - calculateTotalPendingRewards();     
+        require(amount <= excess, "Cannot withdraw required rewards"); //
         rewardPoolBalance -= amount;
         (bool success, ) = msg.sender.call{value: amount}("");
         require(success, "Withdrawal failed");

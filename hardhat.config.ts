@@ -3,6 +3,7 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@nomicfoundation/hardhat-verify";
 import "@openzeppelin/hardhat-upgrades";
 import "@nomicfoundation/hardhat-network-helpers";
+import "@openzeppelin/hardhat-upgrades";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -14,15 +15,17 @@ const config: HardhatUserConfig = {
       optimizer: {
         enabled: true,
         runs: 200
-      }
+      },
+      viaIR: true
     }
   },
   networks: {
     hashkeyTestnet: {
       url: "https://hashkeychain-testnet.alt.technology",
-      accounts: [process.env.PRIVATE_KEY ?? ''],
+      accounts: [process.env.PRIVATE_KEY!!],
       chainId: 133,
-      gasPrice: "auto",
+      gasPrice: 20000000000,
+      timeout: 1000000,
     },
     hashkeyMainnet: {
       url: "https://mainnet.hsk.xyz",
@@ -30,11 +33,15 @@ const config: HardhatUserConfig = {
       chainId: 177,
       gasPrice: "auto",
     },
+    hardhat: {
+      chainId: 31337,
+      allowUnlimitedContractSize: true,
+    },
   },
-  
   etherscan: {
     apiKey: {
-      hashkeyTestnet: "123",
+      hashkeyTestnet: "empty",
+      hashkeyMainnet: 'your API key'
     },
     customChains: [
       {
@@ -54,6 +61,13 @@ const config: HardhatUserConfig = {
         }
       }
     ]
+  },
+  mocha: {
+    timeout: 100000
+  },
+  typechain: {
+    outDir: 'typechain',
+    target: 'ethers-v6'
   }
 };
 
